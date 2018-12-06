@@ -1,0 +1,81 @@
+From d287cb66029d6c3f541ac0799357f10f7d8898ec Mon Sep 17 00:00:00 2001
+From: Jan Mercl <0xjnml@gmail.com>
+Date: Mon, 8 Oct 2018 19:11:25 +0200
+Subject: [PATCH] Fix IN {empty set}. Closes #208.
+
+---
+ Makefile     |  6 +++---
+ expr.go      |  4 ++++
+ testdata.log | 11 +++++++++++
+ testdata.ql  | 10 ++++++++++
+ 4 files changed, 28 insertions(+), 3 deletions(-)
+
+diff --git a/Makefile b/Makefile
+index e696896..627329f 100644
+--- a/Makefile
++++ b/Makefile
+@@ -65,9 +65,9 @@ parser.go: parser.y
+ 	sed -i -e 's|//line.*||' -e 's/yyEofCode/yyEOFCode/' $@
+ 
+ ql.y: doc.go
+-	sed -n '1,/^package/ s/^\/\/  //p' < $< \
+-		| ebnf2y -o $@ -oe $*.ebnf -start StatementList -pkg $* -p _
+-	goyacc -cr -o /dev/null $@
++	#TODO sed -n '1,/^package/ s/^\/\/  //p' < $< \
++	#TODO 	| ebnf2y -o $@ -oe $*.ebnf -start StatementList -pkg $* -p _
++	#TODO goyacc -cr -o /dev/null $@
+ 
+ scanner.go: scanner.l parser.go
+ 	golex -o $@ $<
+diff --git a/expr.go b/expr.go
+index 12cb3db..cf7fe00 100644
+--- a/expr.go
++++ b/expr.go
+@@ -3260,6 +3260,10 @@ func (n *pIn) eval(execCtx *execCtx, ctx map[interface{}]interface{}) (v interfa
+ 		ev = ev0.(*pInEval)
+ 	}
+ 
++	if len(ev.m) == 0 {
++		return n.not, nil
++	}
++
+ 	if ev.sample == nil {
+ 		return nil, nil
+ 	}
+diff --git a/testdata.log b/testdata.log
+index 8240398..0d7b691 100644
+--- a/testdata.log
++++ b/testdata.log
+@@ -8456,3 +8456,14 @@ SELECT c FROM t WHERE c == "abc";
+ ┌Iterate all rows of table "t" using index "cx" where c == "abc"
+ └Output field names ["c"]
+ 
++---- 1357
++SELECT DISTINCT a FROM t WHERE a NOT IN (SELECT a FROM t WHERE b == 9;);
++┌Iterate all rows of table "t"
++└Output field names ["a" "b"]
++┌Filter on a NOT IN (SELECT a FROM t WHERE b == 9;)
++└Output field names ["a" "b"]
++┌Evaluate a as "a",
++└Output field names ["a"]
++┌Compute distinct rows
++└Output field names [a]
++
+diff --git a/testdata.ql b/testdata.ql
+index 4d8aaf0..859e918 100644
+--- a/testdata.ql
++++ b/testdata.ql
+@@ -15775,3 +15775,13 @@ COMMIT;
+ SELECT c FROM t WHERE c = "abc";
+ |"c"
+ [abc]
++
++-- 1357 // https://github.com/cznic/ql/issues/208
++BEGIN TRANSACTION;
++	CREATE TABLE t (a int not null, b int not null);
++	INSERT INTO t (a, b) VALUES (0, 4), (1, 5);
++COMMIT;
++SELECT DISTINCT a FROM t WHERE a NOT IN (SELECT a FROM t WHERE b = 9)
++|"a"
++[0]
++[1]

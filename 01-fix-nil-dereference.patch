@@ -1,0 +1,56 @@
+From 8e18b6555c3927ea72244cc486a822183e24a8a9 Mon Sep 17 00:00:00 2001
+From: Jan Mercl <0xjnml@gmail.com>
+Date: Tue, 9 Oct 2018 11:55:19 +0200
+Subject: [PATCH] Fix nil deref. Closes #207.
+
+---
+ ql.go        | 4 ++++
+ testdata.log | 5 +++++
+ testdata.ql  | 9 +++++++++
+ 3 files changed, 18 insertions(+)
+
+diff --git a/ql.go b/ql.go
+index e66024c..98d5169 100644
+--- a/ql.go
++++ b/ql.go
+@@ -1635,6 +1635,10 @@ func (db *DB) info() (r *DbInfo, err error) {
+ 		}
+ 		for _, k := range a {
+ 			x := t.indices2[k]
++			if x == nil {
++				continue
++			}
++
+ 			a = a[:0]
+ 			for _, e := range x.exprList {
+ 				a = append(a, e.String())
+diff --git a/testdata.log b/testdata.log
+index 0d7b691..c2ad645 100644
+--- a/testdata.log
++++ b/testdata.log
+@@ -8467,3 +8467,8 @@ SELECT DISTINCT a FROM t WHERE a NOT IN (SELECT a FROM t WHERE b == 9;);
+ ┌Compute distinct rows
+ └Output field names [a]
+ 
++---- 1358
++SELECT * FROM t;
++┌Iterate all rows of table "t"
++└Output field names ["a" "b" "c"]
++
+diff --git a/testdata.ql b/testdata.ql
+index 859e918..ff7e1bb 100644
+--- a/testdata.ql
++++ b/testdata.ql
+@@ -15785,3 +15785,12 @@ SELECT DISTINCT a FROM t WHERE a NOT IN (SELECT a FROM t WHERE b = 9)
+ |"a"
+ [0]
+ [1]
++
++-- 1358 // https://github.com/cznic/ql/issues/207
++BEGIN TRANSACTION;
++	CREATE TABLE t (a int not null, b int not null, c int not null);
++	CREATE INDEX t_a_b on t (a, b);
++	CREATE INDEX t_a_b_c on t (a, b, c);
++COMMIT;
++SELECT * FROM t;
++|"a", "b", "c"
